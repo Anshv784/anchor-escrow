@@ -53,8 +53,17 @@ pub struct Make<'info> {
 }
 
 impl<'info> Make<'info> {
-    pub fn init_escrow(&mut self, seed: u64, receive: u64, bumps: &MakeBumps) -> Result<()> {
+    pub fn init_escrow(
+        &mut self,
+        seed: u64,
+        receive: u64,
+        expires_at: i64,
+        taker: Option<Pubkey>,
+        bumps: &MakeBumps,
+    ) -> Result<()> {
         require!(receive > 0, EscrowError::ZeroAmount);
+        let now = Clock::get()?.unix_timestamp;
+        require!(expires_at > now, EscrowError::InvalidExpiry);
 
         self.escrow.set_inner(Escrow {
             seed,
@@ -62,6 +71,8 @@ impl<'info> Make<'info> {
             mint_a: self.mint_a.key(),
             mint_b: self.mint_b.key(),
             receive,
+            expires_at,
+            taker,
             bump: bumps.escrow,
         });
         Ok(())

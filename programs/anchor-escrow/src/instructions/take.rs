@@ -7,6 +7,7 @@ use anchor_spl::{
     },
 };
 
+use crate::error::EscrowError;
 use crate::state::Escrow;
 
 #[derive(Accounts)]
@@ -72,6 +73,16 @@ pub struct Take<'info> {
 }
 
 impl<'info> Take<'info> {
+    pub fn check_conditions(&self) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        require!(now < self.escrow.expires_at, EscrowError::Expired);
+
+        if let Some(allowed) = self.escrow.taker {
+            require_keys_eq!(self.taker.key(), allowed, EscrowError::WrongTaker);
+        }
+        Ok(())
+    }
+
     pub fn pay_maker(&mut self) -> Result<()> {
         let cpi_ctx = CpiContext::new(
             self.token_program.key(),

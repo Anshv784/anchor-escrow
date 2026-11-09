@@ -7,18 +7,23 @@ use anchor_spl::{
     },
 };
 
+use crate::error::EscrowError;
 use crate::state::Escrow;
 
 #[derive(Accounts)]
 pub struct Refund<'info> {
+    // the maker, or after expiry anyone. funds always go back to the maker
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub caller: Signer<'info>,
+
+    #[account(mut)]
+    pub maker: SystemAccount<'info>,
 
     pub mint_a: InterfaceAccount<'info, Mint>,
 
     #[account(
         init_if_needed,
-        payer = maker,
+        payer = caller,
         associated_token::mint = mint_a,
         associated_token::authority = maker,
         associated_token::token_program = token_program
@@ -50,6 +55,13 @@ pub struct Refund<'info> {
 
 impl<'info> Refund<'info> {
     pub fn refund_and_close(&mut self) -> Result<()> {
+        // before expiry the offer belongs to the maker. after it, anyone can crank
+        // the refund so expired escrows don't sit around holding tokens forever
+        if self.caller.key() != self.maker.key() {
+            let now = Clock::get()?.unix_timestamp;
+            require!(now >= self.escrow.expires_at, EscrowError::NotExpired);
+        }
+
         let maker_key = self.maker.key();
         let seed_bytes = self.escrow.seed.to_le_bytes();
         let seeds = &[
